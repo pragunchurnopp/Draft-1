@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>ChurnOpp SDK Test</title>
+  <script src="./sdk_tracking_script.js"></script> <!-- Update path if needed -->
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    .section { margin-bottom: 40px; }
+    .fake-page { height: 2000px; background: linear-gradient(#fff, #ddd); }
+  </style>
+</head>
+<body>
+  <h1>ChurnOpp SDK Full Metrics Test</h1>
+
+  <div class="section">
+    <h3>Interaction</h3>
+    <button onclick="alert('Clicked!')">Click me</button>
+  </div>
+
+  <div class="section">
+    <h3>Scroll Test</h3>
+    <div class="fake-page">Scroll down to test scroll depth</div>
+  </div>
+
+  <div class="section">
+    <h3>Cart Abandonment / Checkout Progress</h3>
+    <button class="add-to-cart">Add to Cart</button>
+    <button class="checkout-step" id="step-1">Checkout Step 1</button>
+    <button class="checkout-step" id="step-2">Checkout Step 2</button>
+  </div>
+
+  <div class="section">
+    <h3>User Active / Inactive</h3>
+    <p>Switch tabs to simulate activity changes.</p>
+  </div>
+
+  <div class="section">
+    <h3>Rage Click</h3>
+    <button id="rage-test">Click rapidly here</button>
+  </div>
+
+  <div class="section">
+    <h3>Help Center Visit</h3>
+    <a href="#" class="help-center-link">Visit Help Center</a>
+  </div>
+
+  <div class="section">
+    <h3>Exit Intent</h3>
+    <p>Move your cursor towards the top to simulate exit intent.</p>
+  </div>
+
+  <script>
+    sdkTracker.init('test_client_1');
+  </script>
+  
+</body>
+</html>
