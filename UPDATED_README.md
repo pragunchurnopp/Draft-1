@@ -1,3 +1,4 @@
+
 # ChurnOpp JavaScript SDK
 
 The ChurnOpp SDK helps you monitor user behavior, detect churn signals, and trigger smart retention strategies from any website or web app — all with a lightweight, zero-friction drop-in script.
@@ -27,12 +28,24 @@ sdkTracker.init("your-client-id", true);
 
 ---
 
+## 🔐 Identify Logged-In Users
+
+To attach events to known users (not just anonymous sessions), call:
+
+```js
+sdkTracker.identifyUser("john@example.com");
+```
+
+This should be triggered right after the user logs in or is recognized in your app.
+
+---
+
 ## 🎯 What Does It Track?
 
 Out of the box, the SDK tracks the following:
 
-| Event              | Trigger Example                            |
-| ------------------ | ------------------------------------------ |
+| Event              | Trigger Example                           |
+|--------------------|--------------------------------------------|
 | `interaction`      | Clicks on buttons, links, elements         |
 | `rageClick`        | Multiple rapid clicks (frustration signal) |
 | `scrollDepth`      | Maximum scroll depth on page               |
@@ -43,13 +56,6 @@ Out of the box, the SDK tracks the following:
 | `userActive`       | User comes back or interacts               |
 | `userInactive`     | User inactive for 30 seconds               |
 | `exitIntent`       | Mouse movement toward tab close            |
-
----
-
-## 🔐 Authentication
-
-You only need a valid `clientID` to use the SDK.  
-All events are sent to your backend’s `/api/events` endpoint.
 
 ---
 
@@ -91,11 +97,8 @@ Payload structure:
     "tag": "BUTTON",
     "id": "submit-btn",
     "classes": "cta-button",
-    "deviceInfo": {
-      "device": "Desktop",
-      "userAgent": "...",
-      ...
-    }
+    "deviceInfo": { "device": "Desktop", ... },
+    "email": "user@example.com" // if identifyUser() is used
   }
 }
 ```

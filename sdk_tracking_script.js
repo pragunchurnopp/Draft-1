@@ -133,6 +133,11 @@
       this.sendEvent('exitIntent', { message: 'User showed exit intent' });
     },
 
+    identifyUser: function (email) {
+      this.email = email; // store it in SDK memory
+    },
+    
+
     getDeviceInfo: function () {
       const ua = navigator.userAgent;
       let device = /Mobi|Android/i.test(ua)
@@ -181,6 +186,7 @@
           event: eventType,
           data: {
             ...data,
+            email: this.email || null,
             deviceInfo: this.deviceInfo,
           },
         };

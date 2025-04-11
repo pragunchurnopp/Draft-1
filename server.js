@@ -31,6 +31,7 @@ const EventSchema = new mongoose.Schema({
     userID: { type: String},
     event: { type: String },
     data: { type: Object },
+    email: { type: String },
     timestamp: { type: Date, default: Date.now },
 });
 const Event = mongoose.model('Event', EventSchema);
@@ -41,6 +42,15 @@ const adminSchema = new mongoose.Schema({
   });
   
   const Admin = mongoose.model('Admin', adminSchema);  
+
+  const UserMapSchema = new mongoose.Schema({
+    clientID: String,
+    userID: String,
+    email: String,
+    lastSeen: { type: Date, default: Date.now }
+  });
+  const UserMap = mongoose.model('UserMap', UserMapSchema);
+  
 
 function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
@@ -94,8 +104,18 @@ app.post('/api/admin/login', async (req, res) => {
         return res.status(403).json({ message: 'Event not allowed for your subscription plan' });
       }
   
-      const newEvent = new Event({ clientID, userID, event, data });
+      const newEvent = new Event({ clientID, userID, event, data, email: data?.email || null });
       await newEvent.save();
+
+      if (email) {
+        await UserMap.findOneAndUpdate(
+          { clientID, userID },
+          { email, lastSeen: new Date() },
+          { upsert: true }
+        );
+      }
+      
+
       res.status(201).json({ message: 'Event saved successfully' });
     } catch (err) {
       console.error('Error processing /api/events:', err);
@@ -281,48 +301,65 @@ const adminAuth = (req, res, next) => {
     }
   });  
 
-  app.get('/api/churn/:userId', async (req, res) => {
-    const { userId } = req.params;
-  
-    try {
-      const events = await Event.find({ userID: userId });
-  
-      if (events.length === 0) {
-        return res.json({ churnScore: 1 });
-      }
-  
-      const now = Date.now();
-      const lastEvent = Math.max(...events.map(e => new Date(e.timestamp).getTime()));
-      const lastActiveDays = (now - lastEvent) / (1000 * 60 * 60 * 24);
-  
-      const scrollEvents = events.filter(e => e.event === 'scrollDepth');
-      const maxScroll = Math.max(...scrollEvents.map(e => e.data?.depth || 0), 0);
-  
-      const rageClicks = events.filter(e => e.event === 'rageClick').length;
-      const cartEvents = events.some(e => e.event === 'cartAbandonment');
-      const helpVisits = events.some(e => e.event === 'helpCenterVisit');
-  
-      const sessionEvents = events.filter(e => e.event === 'sessionDuration');
-      const totalSessionTime = sessionEvents.reduce((sum, e) => sum + (e.data?.duration || 0), 0) / 1000; // in sec
-      const avgSessionTime = totalSessionTime / (sessionEvents.length || 1);
-  
-      // Churn score logic
-      let score = 0;
-      if (lastActiveDays > 7) score += 0.25;
-      if (maxScroll < 25) score += 0.15;
-      if (rageClicks > 3) score += 0.15;
-      if (!cartEvents) score += 0.10;
-      if (!helpVisits) score += 0.05;
-      if (avgSessionTime < 30) score += 0.15;
-      if (totalSessionTime < 300) score += 0.15;
-  
-      return res.json({ churnScore: Math.min(score, 1).toFixed(2) });
-  
-    } catch (err) {
-      console.error("Churn calculation error:", err);
-      res.status(500).json({ error: "Churn score calculation failed." });
+
+app.get('/api/churn/:userId', authenticateToken, async (req, res) => {
+  const { userId } = req.params;
+  const clientID = req.client.clientID; // Extracted from the JWT via authenticateToken
+  const cacheKey = `${clientID}_${userId}`;
+
+  // Check cache
+  if (churnCache[cacheKey] && (Date.now() - churnCache[cacheKey].timestamp < 3600000)) {
+    return res.json({ churnScore: churnCache[cacheKey].score });
+  }
+
+  try {
+    const events = await Event.find({ userID: userId, clientID });
+
+    if (events.length === 0) {
+      churnCache[cacheKey] = { score: 1, timestamp: Date.now() };
+      return res.json({ churnScore: 1 });
     }
-  });
+
+    const now = Date.now();
+    const lastEvent = Math.max(...events.map(e => new Date(e.timestamp).getTime()));
+    const lastActiveDays = (now - lastEvent) / (1000 * 60 * 60 * 24);
+
+    const scrollEvents = events.filter(e => e.event === 'scrollDepth');
+    const maxScroll = Math.max(...scrollEvents.map(e => e.data?.depth || 0), 0);
+
+    const rageClicks = events.filter(e => e.event === 'rageClick').length;
+    const cartEvents = events.some(e => e.event === 'cartAbandonment');
+    const helpVisits = events.some(e => e.event === 'helpCenterVisit');
+
+    const sessionEvents = events.filter(e => e.event === 'sessionDuration');
+    const totalSessionTime = sessionEvents.reduce((sum, e) => sum + (e.data?.duration || 0), 0) / 1000;
+    const avgSessionTime = totalSessionTime / (sessionEvents.length || 1);
+
+    // Logic-based churn score
+    let score = 0;
+    if (lastActiveDays > 7) score += 0.25;
+    if (maxScroll < 25) score += 0.15;
+    if (rageClicks > 3) score += 0.15;
+    if (!cartEvents) score += 0.10;
+    if (!helpVisits) score += 0.05;
+    if (avgSessionTime < 30) score += 0.15;
+    if (totalSessionTime < 300) score += 0.15;
+
+    const sendChurnEmail = require('./utils/sendEmail');
+
+    const finalScore = Math.min(score, 1).toFixed(2);
+    churnCache[cacheKey] = { score: finalScore, timestamp: Date.now() };
+    if (parseFloat(finalScore) > 0.5) {
+      sendChurnEmail(userId, clientID, finalScore); // async fire-and-forget
+    }
+
+    res.json({ churnScore: finalScore });
+  } catch (err) {
+    console.error("Churn calculation error:", err);
+    res.status(500).json({ error: "Churn score calculation failed." });
+  }
+});
+
 
   app.get('/api/dashboard/churn-users', authenticateToken, async (req, res) => {
     const clientID = req.client.clientID;
