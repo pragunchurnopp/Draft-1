@@ -5,6 +5,7 @@ const bcrypt = require('bcrypt');
 const cors = require('cors');
 const dotenv = require('dotenv').config();
 const { time } = require('console');
+const churnCache = {};
 
 const app = express();
 app.use(express.json());
@@ -279,6 +280,75 @@ const adminAuth = (req, res, next) => {
       res.status(500).json({ message: 'Failed to load analytics' });
     }
   });  
+
+  app.get('/api/churn/:userId', async (req, res) => {
+    const { userId } = req.params;
+  
+    try {
+      const events = await Event.find({ userID: userId });
+  
+      if (events.length === 0) {
+        return res.json({ churnScore: 1 });
+      }
+  
+      const now = Date.now();
+      const lastEvent = Math.max(...events.map(e => new Date(e.timestamp).getTime()));
+      const lastActiveDays = (now - lastEvent) / (1000 * 60 * 60 * 24);
+  
+      const scrollEvents = events.filter(e => e.event === 'scrollDepth');
+      const maxScroll = Math.max(...scrollEvents.map(e => e.data?.depth || 0), 0);
+  
+      const rageClicks = events.filter(e => e.event === 'rageClick').length;
+      const cartEvents = events.some(e => e.event === 'cartAbandonment');
+      const helpVisits = events.some(e => e.event === 'helpCenterVisit');
+  
+      const sessionEvents = events.filter(e => e.event === 'sessionDuration');
+      const totalSessionTime = sessionEvents.reduce((sum, e) => sum + (e.data?.duration || 0), 0) / 1000; // in sec
+      const avgSessionTime = totalSessionTime / (sessionEvents.length || 1);
+  
+      // Churn score logic
+      let score = 0;
+      if (lastActiveDays > 7) score += 0.25;
+      if (maxScroll < 25) score += 0.15;
+      if (rageClicks > 3) score += 0.15;
+      if (!cartEvents) score += 0.10;
+      if (!helpVisits) score += 0.05;
+      if (avgSessionTime < 30) score += 0.15;
+      if (totalSessionTime < 300) score += 0.15;
+  
+      return res.json({ churnScore: Math.min(score, 1).toFixed(2) });
+  
+    } catch (err) {
+      console.error("Churn calculation error:", err);
+      res.status(500).json({ error: "Churn score calculation failed." });
+    }
+  });
+
+  app.get('/api/dashboard/churn-users', authenticateToken, async (req, res) => {
+    const clientID = req.client.clientID;
+    try {
+      const users = await Event.aggregate([
+        { $match: { clientID } },
+        { $group: { _id: "$userID" } }
+      ]);
+  
+      const scores = [];
+      for (const user of users) {
+        const response = await fetch(`http://localhost:5000/api/churn/${user._id}`);
+        const result = await response.json();
+        scores.push({ userID: user._id, churnScore: result.churnScore });
+      }
+  
+      scores.sort((a, b) => b.churnScore - a.churnScore);
+      res.json(scores);
+  
+    } catch (err) {
+      console.error("Churn user list error:", err);
+      res.status(500).json({ message: "Failed to load churn users" });
+    }
+  });
+  
+  
 
 
 const port = process.env.PORT || 5000;

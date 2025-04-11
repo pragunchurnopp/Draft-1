@@ -8,6 +8,7 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Le
 export default function DashboardPage() {
   const [data, setData] = useState(null);
   const [events, setEvents] = useState([]);
+  const [churnUsers, setChurnUsers] = useState([]);
   const [error, setError] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const eventsPerPage = 10;
@@ -51,6 +52,18 @@ export default function DashboardPage() {
       .then(setEvents)
       .catch(() => console.error('Failed to load events'));
   }, [eventType, userIdFilter, startDate, endDate]);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    fetch("http://localhost:5000/api/dashboard/churn-users", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(res => res.json())
+      .then(setChurnUsers)
+      .catch(() => console.error("Failed to load churn users"));
+  }, []);
 
   const handleExportCSV = () => {
     const headers = ['Timestamp', 'Event', 'User ID', 'Data'];
@@ -191,7 +204,7 @@ export default function DashboardPage() {
       </div>
 
       <h2 className="text-xl font-semibold mb-6 mt-10">Recent Events</h2>
-      <div className="overflow-auto max-h-[400px] border rounded-lg">
+      <div className="overflow-auto max-h-[400px] border rounded-lg mb-10">
         <table className="w-full text-sm text-left">
           <thead className="bg-gray-100 sticky top-0">
             <tr>
@@ -224,6 +237,45 @@ export default function DashboardPage() {
             {index + 1}
           </button>
         ))}
+      </div>
+
+      <h2 className="text-xl font-semibold mb-6 mt-10">Churn Risk by User</h2>
+      <div className="overflow-auto max-h-[400px] border rounded-lg mb-6">
+        <table className="w-full text-sm text-left">
+          <thead className="bg-gray-100 sticky top-0">
+            <tr>
+              <th className="p-2">User ID</th>
+              <th className="p-2">Churn Score</th>
+              <th className="p-2">Risk Level</th>
+            </tr>
+          </thead>
+          <tbody>
+            {churnUsers.length === 0 ? (
+              <tr><td colSpan="3" className="p-4 text-center text-gray-500">No data available</td></tr>
+            ) : (
+              churnUsers.map((u, i) => {
+                const score = parseFloat(u.churnScore);
+                let risk = 'Low', color = 'bg-green-100 text-green-800';
+                if (score >= 0.7) {
+                  risk = 'High'; color = 'bg-red-100 text-red-800';
+                } else if (score >= 0.3) {
+                  risk = 'Medium'; color = 'bg-yellow-100 text-yellow-800';
+                }
+                return (
+                  <tr key={i} className="border-t">
+                    <td className="p-2">{u.userID}</td>
+                    <td className="p-2">{score}</td>
+                    <td className="p-2">
+                      <span className={`px-2 py-1 rounded text-xs font-semibold ${color}`}>
+                        {risk}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );
